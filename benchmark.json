@@ -1,0 +1,10 @@
+{
+  "cpu_usage": 3.5,
+  "ram_percent": 91.9,
+  "ram_available_gb": 0.6365203857421875,
+  "disk_read_speed": 0.0,
+  "disk_write_speed": 0.26171875,
+  "processes_count": 217,
+  "boot_time": 1765824204.021069,
+  "timestamp": 1765826175.021069
+}

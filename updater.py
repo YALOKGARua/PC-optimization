@@ -4,14 +4,31 @@ import json
 import shutil
 import zipfile
 import tempfile
+import subprocess
 import urllib.request
 import urllib.error
 from typing import Callable, Optional
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 GITHUB_USER = "YALOKGARua"
 GITHUB_REPO = "PC-optimization"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
+
+
+def is_frozen():
+    return getattr(sys, 'frozen', False)
+
+
+def get_app_path():
+    if is_frozen():
+        return sys.executable
+    return os.path.abspath(__file__)
+
+
+def get_app_dir():
+    if is_frozen():
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 class Updater:
@@ -21,6 +38,7 @@ class Updater:
         self.current_version = VERSION
         self.latest_version = None
         self.download_url = None
+        self.exe_download_url = None
         self.update_available = False
     
     def _parse_version(self, version_str: str) -> tuple:
@@ -49,6 +67,7 @@ class Updater:
             "latest_version": None,
             "update_available": False,
             "download_url": None,
+            "is_exe": is_frozen(),
             "error": None
         }
         
@@ -69,12 +88,21 @@ class Updater:
             
             assets = data.get('assets', [])
             for asset in assets:
-                if asset.get('name', '').endswith('.zip'):
-                    self.download_url = asset.get('browser_download_url')
-                    result["download_url"] = self.download_url
-                    break
+                name = asset.get('name', '').lower()
+                url = asset.get('browser_download_url')
+                
+                if name.endswith('.exe'):
+                    self.exe_download_url = url
+                    if is_frozen():
+                        self.download_url = url
+                        result["download_url"] = url
+                
+                elif name.endswith('.zip'):
+                    if not is_frozen():
+                        self.download_url = url
+                        result["download_url"] = url
             
-            if not self.download_url and data.get('zipball_url'):
+            if not self.download_url and data.get('zipball_url') and not is_frozen():
                 self.download_url = data.get('zipball_url')
                 result["download_url"] = self.download_url
             
@@ -83,6 +111,10 @@ class Updater:
                 result["update_available"] = True
                 self._log(f"  Доступна новая версия: {self.latest_version}")
                 self._log(f"  Текущая версия: {self.current_version}")
+                
+                if is_frozen() and not self.exe_download_url:
+                    result["error"] = "EXE файл не найден в релизе"
+                    self._log("  ⚠️ EXE файл не найден в релизе на GitHub")
             else:
                 self._log(f"  У вас последняя версия: {self.current_version}")
                 
@@ -107,19 +139,23 @@ class Updater:
         
         try:
             temp_dir = tempfile.mkdtemp()
-            zip_path = os.path.join(temp_dir, "update.zip")
+            
+            if is_frozen():
+                file_path = os.path.join(temp_dir, "Yalokgar Optimizer_new.exe")
+            else:
+                file_path = os.path.join(temp_dir, "update.zip")
             
             req = urllib.request.Request(
                 self.download_url,
                 headers={'User-Agent': 'YalokgarOptimizer'}
             )
             
-            with urllib.request.urlopen(req, timeout=60) as response:
+            with urllib.request.urlopen(req, timeout=120) as response:
                 total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
                 block_size = 8192
                 
-                with open(zip_path, 'wb') as f:
+                with open(file_path, 'wb') as f:
                     while True:
                         chunk = response.read(block_size)
                         if not chunk:
@@ -132,21 +168,80 @@ class Updater:
                             progress_callback(progress)
             
             self._log(f"  Загружено: {downloaded / (1024*1024):.2f} MB")
-            return zip_path
+            return file_path
             
         except Exception as e:
             self._log(f"  Ошибка загрузки: {e}")
             return None
     
-    def apply_update(self, zip_path: str) -> bool:
-        if not zip_path or not os.path.exists(zip_path):
+    def apply_update(self, downloaded_path: str) -> bool:
+        if not downloaded_path or not os.path.exists(downloaded_path):
             self._log("  Файл обновления не найден")
             return False
         
         self._log("Установка обновления...")
         
+        if is_frozen():
+            return self._apply_exe_update(downloaded_path)
+        else:
+            return self._apply_source_update(downloaded_path)
+    
+    def _apply_exe_update(self, new_exe_path: str) -> bool:
         try:
-            app_dir = os.path.dirname(os.path.abspath(__file__))
+            current_exe = sys.executable
+            app_dir = os.path.dirname(current_exe)
+            exe_name = os.path.basename(current_exe)
+            
+            old_exe_backup = os.path.join(app_dir, exe_name + ".old")
+            updater_bat = os.path.join(tempfile.gettempdir(), "yalokgar_update.bat")
+            
+            bat_content = f'''@echo off
+title Yalokgar Optimizer - Updating...
+echo Обновление Yalokgar Optimizer...
+echo Ожидание закрытия приложения...
+timeout /t 2 /nobreak >nul
+
+:waitloop
+tasklist /FI "PID eq %CURRENT_PID%" 2>nul | find /I "%CURRENT_PID%" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+
+echo Установка обновления...
+if exist "{old_exe_backup}" del /f /q "{old_exe_backup}"
+move /y "{current_exe}" "{old_exe_backup}"
+move /y "{new_exe_path}" "{current_exe}"
+
+echo Запуск обновлённой версии...
+start "" "{current_exe}"
+
+if exist "{old_exe_backup}" del /f /q "{old_exe_backup}"
+del /f /q "%~f0"
+'''
+            bat_content = bat_content.replace("%CURRENT_PID%", str(os.getpid()))
+            
+            with open(updater_bat, 'w', encoding='cp866') as f:
+                f.write(bat_content)
+            
+            self._log("  Запуск установщика обновления...")
+            self._log("  ⚠️ Приложение будет перезапущено")
+            
+            subprocess.Popen(
+                ['cmd', '/c', updater_bat],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                close_fds=True
+            )
+            
+            return True
+            
+        except Exception as e:
+            self._log(f"  Ошибка установки EXE: {e}")
+            return False
+    
+    def _apply_source_update(self, zip_path: str) -> bool:
+        try:
+            app_dir = get_app_dir()
             temp_extract = tempfile.mkdtemp()
             
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -192,11 +287,11 @@ class Updater:
         if not check.get("update_available"):
             return True
         
-        zip_path = self.download_update(progress_callback)
-        if not zip_path:
+        downloaded = self.download_update(progress_callback)
+        if not downloaded:
             return False
         
-        return self.apply_update(zip_path)
+        return self.apply_update(downloaded)
     
     def get_version(self) -> str:
         return self.current_version
@@ -204,4 +299,3 @@ class Updater:
 
 def get_version():
     return VERSION
-

@@ -4,9 +4,14 @@ import threading
 import sys
 import os
 from datetime import datetime
+import psutil
+
+if getattr(sys, 'frozen', False):
+    bundle_dir = sys._MEIPASS
+    sys.path.insert(0, bundle_dir)
+
 from optimizer import SystemOptimizer, ProcessOptimizer
 from updater import Updater, get_version
-import psutil
 
 
 ctk.set_appearance_mode("dark")

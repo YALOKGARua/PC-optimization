@@ -1357,4 +1357,3 @@ class ProcessOptimizer:
         
         self._log(f"Процесс {process_name} не найден")
         return False
-
