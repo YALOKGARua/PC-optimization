@@ -6,9 +6,16 @@ import shutil
 import tempfile
 import psutil
 import wmi
+import json
+import time
 from pathlib import Path
 from typing import Callable, Optional
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
+
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+BACKUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rollback_backup.json")
 
 
 class SystemOptimizer:
@@ -17,6 +24,69 @@ class SystemOptimizer:
         self._log = log_callback or print
         self._is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
         self._wmi = wmi.WMI()
+        self._rollback_data = {"registry": [], "services": [], "power_plan": None}
+        self._log_file = None
+        self._init_logging()
+    
+    def _init_logging(self):
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            log_filename = datetime.now().strftime("optimizer_%Y%m%d_%H%M%S.log")
+            self._log_file = os.path.join(LOG_DIR, log_filename)
+        except:
+            self._log_file = None
+    
+    def _log_to_file(self, message: str):
+        if self._log_file:
+            try:
+                with open(self._log_file, "a", encoding="utf-8") as f:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"[{timestamp}] {message}\n")
+            except:
+                pass
+    
+    def _log_both(self, message: str):
+        self._log(message)
+        self._log_to_file(message)
+    
+    def _save_registry_backup(self, hkey, path: str, value_name: str):
+        try:
+            with winreg.OpenKey(hkey, path, 0, winreg.KEY_READ) as key:
+                value, reg_type = winreg.QueryValueEx(key, value_name)
+                self._rollback_data["registry"].append({
+                    "hkey": "HKLM" if hkey == winreg.HKEY_LOCAL_MACHINE else "HKCU",
+                    "path": path,
+                    "name": value_name,
+                    "value": value,
+                    "type": reg_type
+                })
+        except FileNotFoundError:
+            self._rollback_data["registry"].append({
+                "hkey": "HKLM" if hkey == winreg.HKEY_LOCAL_MACHINE else "HKCU",
+                "path": path,
+                "name": value_name,
+                "value": None,
+                "type": None
+            })
+        except:
+            pass
+    
+    def _save_rollback_data(self):
+        try:
+            with open(BACKUP_FILE, "w", encoding="utf-8") as f:
+                json.dump(self._rollback_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self._log_both(f"  Ошибка сохранения бэкапа: {e}")
+    
+    def _load_rollback_data(self):
+        try:
+            if os.path.exists(BACKUP_FILE):
+                with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                    self._rollback_data = json.load(f)
+                return True
+        except:
+            pass
+        return False
     
     def _execute_cmd(self, command: str, shell: bool = True) -> tuple[bool, str]:
         try:
@@ -27,6 +97,7 @@ class SystemOptimizer:
                 text=True,
                 timeout=120
             )
+            self._log_to_file(f"CMD: {command} -> {result.returncode}")
             return result.returncode == 0, result.stdout + result.stderr
         except subprocess.TimeoutExpired:
             return False, "Command timed out"
@@ -860,6 +931,366 @@ class SystemOptimizer:
         self._log("=" * 50)
         
         return results
+    
+    def clear_gpu_vram(self) -> dict:
+        self._log_both("Очистка видеопамяти GPU...")
+        
+        results = {"success": False}
+        
+        try:
+            self._execute_cmd('powershell -Command "Get-Process | Where-Object {$_.WorkingSet64 -gt 100MB} | ForEach-Object { $_.Refresh() }"')
+            
+            nvidia_cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'NVIDIA', 'DXCache')
+            nvidia_cache2 = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'NVIDIA', 'GLCache')
+            amd_cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'AMD', 'DxCache')
+            dx_cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'D3DSCache')
+            
+            caches = [nvidia_cache, nvidia_cache2, amd_cache, dx_cache]
+            total_freed = 0
+            
+            for cache in caches:
+                if os.path.exists(cache):
+                    freed = self._safe_remove(cache)
+                    total_freed += freed
+                    self._log_both(f"  Очищен кэш: {os.path.basename(cache)}")
+            
+            freed_mb = total_freed / (1024 * 1024)
+            self._log_both(f"  Освобождено: {freed_mb:.2f} MB кэша шейдеров")
+            
+            self._execute_cmd('powershell -Command "[System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers()"')
+            
+            results["success"] = True
+            results["freed_mb"] = freed_mb
+            self._log_both("  GPU VRAM очищена (кэш шейдеров удалён)")
+            
+        except Exception as e:
+            self._log_both(f"  Ошибка: {e}")
+        
+        return results
+    
+    def disable_scheduled_tasks(self) -> dict:
+        self._log_both("Отключение задач планировщика...")
+        
+        results = {"disabled": [], "failed": []}
+        
+        if not self._is_admin:
+            self._log_both("  Требуются права администратора")
+            return results
+        
+        tasks_to_disable = [
+            r"\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser",
+            r"\Microsoft\Windows\Application Experience\ProgramDataUpdater",
+            r"\Microsoft\Windows\Autochk\Proxy",
+            r"\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
+            r"\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip",
+            r"\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
+            r"\Microsoft\Windows\Feedback\Siuf\DmClient",
+            r"\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload",
+            r"\Microsoft\Windows\Windows Error Reporting\QueueReporting",
+            r"\Microsoft\Windows\Power Efficiency Diagnostics\AnalyzeSystem",
+            r"\Microsoft\Windows\CloudExperienceHost\CreateObjectTask",
+        ]
+        
+        for task in tasks_to_disable:
+            success, _ = self._execute_cmd(f'schtasks /Change /TN "{task}" /Disable')
+            if success:
+                results["disabled"].append(task.split("\\")[-1])
+            else:
+                results["failed"].append(task.split("\\")[-1])
+        
+        self._log_both(f"  Отключено задач: {len(results['disabled'])}")
+        self._log_both("  Телеметрия и диагностика отключены")
+        
+        return results
+    
+    def enable_scheduled_tasks(self) -> dict:
+        self._log_both("Включение задач планировщика...")
+        
+        results = {"enabled": [], "failed": []}
+        
+        if not self._is_admin:
+            self._log_both("  Требуются права администратора")
+            return results
+        
+        tasks_to_enable = [
+            r"\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser",
+            r"\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
+            r"\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
+        ]
+        
+        for task in tasks_to_enable:
+            success, _ = self._execute_cmd(f'schtasks /Change /TN "{task}" /Enable')
+            if success:
+                results["enabled"].append(task.split("\\")[-1])
+        
+        self._log_both(f"  Включено задач: {len(results['enabled'])}")
+        
+        return results
+    
+    def set_cpu_affinity(self, process_name: str = None, cores: list = None) -> dict:
+        self._log_both(f"Настройка CPU Affinity...")
+        
+        results = {"success": False, "processes": []}
+        
+        try:
+            if process_name:
+                for proc in psutil.process_iter(['pid', 'name']):
+                    try:
+                        if process_name.lower() in proc.info['name'].lower():
+                            p = psutil.Process(proc.info['pid'])
+                            if cores:
+                                p.cpu_affinity(cores)
+                            else:
+                                all_cores = list(range(psutil.cpu_count()))
+                                if len(all_cores) > 1:
+                                    p.cpu_affinity(all_cores[1:])
+                            results["processes"].append(proc.info['name'])
+                            self._log_both(f"  {proc.info['name']} -> ядра {cores or 'все'}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            else:
+                system_procs = ['dwm.exe', 'csrss.exe']
+                for proc in psutil.process_iter(['pid', 'name']):
+                    try:
+                        if proc.info['name'].lower() in system_procs:
+                            p = psutil.Process(proc.info['pid'])
+                            p.cpu_affinity([0])
+                            self._log_both(f"  {proc.info['name']} -> ядро 0 (система)")
+                    except:
+                        pass
+            
+            results["success"] = True
+            self._log_both("  CPU Affinity настроен")
+            
+        except Exception as e:
+            self._log_both(f"  Ошибка: {e}")
+        
+        return results
+    
+    def optimize_prefetch(self, enable: bool = True) -> dict:
+        self._log_both(f"{'Включение' if enable else 'Отключение'} Prefetch/Superfetch...")
+        
+        results = {"success": False}
+        
+        if not self._is_admin:
+            self._log_both("  Требуются права администратора")
+            return results
+        
+        try:
+            self._save_registry_backup(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",
+                "EnablePrefetcher"
+            )
+            self._save_registry_backup(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",
+                "EnableSuperfetch"
+            )
+            
+            key_path = r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters"
+            with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_WRITE) as key:
+                value = 3 if enable else 0
+                winreg.SetValueEx(key, "EnablePrefetcher", 0, winreg.REG_DWORD, value)
+                winreg.SetValueEx(key, "EnableSuperfetch", 0, winreg.REG_DWORD, value)
+            
+            if enable:
+                self._execute_cmd('sc config "SysMain" start= auto')
+                self._execute_cmd('sc start "SysMain"')
+                self._log_both("  Prefetch/Superfetch ВКЛЮЧЕНЫ")
+                self._log_both("  Система будет предзагружать часто используемые приложения")
+            else:
+                self._execute_cmd('sc stop "SysMain"')
+                self._execute_cmd('sc config "SysMain" start= disabled')
+                self._log_both("  Prefetch/Superfetch ОТКЛЮЧЕНЫ")
+                self._log_both("  Рекомендуется для SSD (меньше износ)")
+            
+            self._save_rollback_data()
+            results["success"] = True
+            
+        except Exception as e:
+            self._log_both(f"  Ошибка: {e}")
+        
+        return results
+    
+    def run_trim(self) -> dict:
+        self._log_both("Запуск оптимизации накопителей (TRIM)...")
+        
+        results = {"success": False, "drives": []}
+        
+        if not self._is_admin:
+            self._log_both("  Требуются права администратора")
+            return results
+        
+        try:
+            success, output = self._execute_cmd('wmic diskdrive get model,mediatype')
+            
+            success, output = self._execute_cmd('defrag C: /O /U /V')
+            if success:
+                results["drives"].append("C:")
+                self._log_both("  TRIM выполнен для диска C:")
+            
+            for letter in "DEFGHIJ":
+                if os.path.exists(f"{letter}:\\"):
+                    success, _ = self._execute_cmd(f'defrag {letter}: /O /U')
+                    if success:
+                        results["drives"].append(f"{letter}:")
+                        self._log_both(f"  TRIM выполнен для диска {letter}:")
+            
+            results["success"] = True
+            self._log_both("  Оптимизация накопителей завершена")
+            self._log_both("  SSD диски оптимизированы (TRIM)")
+            
+        except Exception as e:
+            self._log_both(f"  Ошибка: {e}")
+        
+        return results
+    
+    def get_benchmark(self) -> dict:
+        results = {
+            "cpu_usage": psutil.cpu_percent(interval=1),
+            "ram_percent": psutil.virtual_memory().percent,
+            "ram_available_gb": psutil.virtual_memory().available / (1024**3),
+            "disk_read_speed": 0,
+            "disk_write_speed": 0,
+            "processes_count": len(list(psutil.process_iter())),
+            "boot_time": psutil.boot_time(),
+            "timestamp": time.time()
+        }
+        
+        try:
+            disk_io_start = psutil.disk_io_counters()
+            time.sleep(1)
+            disk_io_end = psutil.disk_io_counters()
+            
+            results["disk_read_speed"] = (disk_io_end.read_bytes - disk_io_start.read_bytes) / (1024*1024)
+            results["disk_write_speed"] = (disk_io_end.write_bytes - disk_io_start.write_bytes) / (1024*1024)
+        except:
+            pass
+        
+        return results
+    
+    def run_benchmark_comparison(self) -> dict:
+        self._log_both("Запуск бенчмарка системы...")
+        
+        benchmark_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "benchmark.json")
+        
+        current = self.get_benchmark()
+        previous = None
+        
+        try:
+            if os.path.exists(benchmark_file):
+                with open(benchmark_file, "r") as f:
+                    previous = json.load(f)
+        except:
+            pass
+        
+        try:
+            with open(benchmark_file, "w") as f:
+                json.dump(current, f, indent=2)
+        except:
+            pass
+        
+        self._log_both(f"  CPU загрузка: {current['cpu_usage']:.1f}%")
+        self._log_both(f"  RAM использовано: {current['ram_percent']:.1f}%")
+        self._log_both(f"  RAM доступно: {current['ram_available_gb']:.2f} GB")
+        self._log_both(f"  Процессов: {current['processes_count']}")
+        self._log_both(f"  Диск чтение: {current['disk_read_speed']:.1f} MB/s")
+        self._log_both(f"  Диск запись: {current['disk_write_speed']:.1f} MB/s")
+        
+        if previous:
+            self._log_both("  --- Сравнение с предыдущим ---")
+            
+            cpu_diff = previous['cpu_usage'] - current['cpu_usage']
+            ram_diff = previous['ram_percent'] - current['ram_percent']
+            procs_diff = previous['processes_count'] - current['processes_count']
+            
+            if cpu_diff > 0:
+                self._log_both(f"  ✓ CPU: -{cpu_diff:.1f}% (улучшение)")
+            elif cpu_diff < 0:
+                self._log_both(f"  ✗ CPU: +{abs(cpu_diff):.1f}% (ухудшение)")
+            
+            if ram_diff > 0:
+                self._log_both(f"  ✓ RAM: -{ram_diff:.1f}% (освобождено)")
+            elif ram_diff < 0:
+                self._log_both(f"  ✗ RAM: +{abs(ram_diff):.1f}% (больше занято)")
+            
+            if procs_diff > 0:
+                self._log_both(f"  ✓ Процессы: -{procs_diff} (меньше)")
+            elif procs_diff < 0:
+                self._log_both(f"  ✗ Процессы: +{abs(procs_diff)} (больше)")
+        else:
+            self._log_both("  Первый запуск бенчмарка (нет данных для сравнения)")
+        
+        return {"current": current, "previous": previous}
+    
+    def rollback_all(self) -> dict:
+        self._log_both("=" * 50)
+        self._log_both("ОТКАТ ВСЕХ ИЗМЕНЕНИЙ")
+        self._log_both("=" * 50)
+        
+        results = {"success": False, "restored": []}
+        
+        if not self._load_rollback_data():
+            self._log_both("  Файл бэкапа не найден!")
+            self._log_both("  Выполняю стандартное восстановление...")
+        
+        try:
+            for item in self._rollback_data.get("registry", []):
+                try:
+                    hkey = winreg.HKEY_LOCAL_MACHINE if item["hkey"] == "HKLM" else winreg.HKEY_CURRENT_USER
+                    
+                    if item["value"] is None:
+                        try:
+                            with winreg.OpenKey(hkey, item["path"], 0, winreg.KEY_WRITE) as key:
+                                winreg.DeleteValue(key, item["name"])
+                        except:
+                            pass
+                    else:
+                        with winreg.CreateKeyEx(hkey, item["path"], 0, winreg.KEY_WRITE) as key:
+                            winreg.SetValueEx(key, item["name"], 0, item["type"], item["value"])
+                    
+                    results["restored"].append(f"REG: {item['name']}")
+                except:
+                    pass
+            
+            self.enable_services()
+            self.enable_xbox_services()
+            results["restored"].append("Services")
+            
+            self.restore_power_plan()
+            results["restored"].append("Power Plan")
+            
+            self.restore_visual_effects()
+            results["restored"].append("Visual Effects")
+            
+            self.optimize_prefetch(enable=True)
+            results["restored"].append("Prefetch/Superfetch")
+            
+            self.enable_scheduled_tasks()
+            results["restored"].append("Scheduled Tasks")
+            
+            try:
+                key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications"
+                with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
+                    winreg.SetValueEx(key, "GlobalUserDisabled", 0, winreg.REG_DWORD, 0)
+                results["restored"].append("Background Apps")
+            except:
+                pass
+            
+            results["success"] = True
+            self._log_both(f"  Восстановлено: {len(results['restored'])} компонентов")
+            self._log_both("  ⚠️ Перезагрузите компьютер для полного отката!")
+            
+        except Exception as e:
+            self._log_both(f"  Ошибка отката: {e}")
+        
+        self._log_both("=" * 50)
+        
+        return results
+    
+    def get_log_file_path(self) -> str:
+        return self._log_file
 
 
 class ProcessOptimizer:

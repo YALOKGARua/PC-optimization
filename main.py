@@ -5,6 +5,7 @@ import sys
 import os
 from datetime import datetime
 from optimizer import SystemOptimizer, ProcessOptimizer
+from updater import Updater, get_version
 import psutil
 
 
@@ -51,7 +52,7 @@ class TerminalText(ctk.CTkTextbox):
     def __init__(self, master, **kwargs):
         kwargs.setdefault('fg_color', BG_DARKER)
         kwargs.setdefault('text_color', NEON_GREEN)
-        kwargs.setdefault('font', ctk.CTkFont(family="Consolas", size=14))
+        kwargs.setdefault('font', ctk.CTkFont(family="Consolas", size=11))
         kwargs.setdefault('border_width', 2)
         kwargs.setdefault('border_color', NEON_GREEN)
         super().__init__(master, **kwargs)
@@ -65,7 +66,7 @@ class CyberButton(ctk.CTkButton):
         kwargs.setdefault('border_color', neon_color)
         kwargs.setdefault('text_color', neon_color)
         kwargs.setdefault('hover_color', neon_color)
-        kwargs.setdefault('font', ctk.CTkFont(family="Consolas", size=15, weight="bold"))
+        kwargs.setdefault('font', ctk.CTkFont(family="Consolas", size=12, weight="bold"))
         kwargs.setdefault('corner_radius', 6)
         super().__init__(master, **kwargs)
 
@@ -78,29 +79,29 @@ class SystemCard(NeonFrame):
         self.grid_columnconfigure(0, weight=1)
         
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        header.grid(row=0, column=0, padx=10, pady=(10, 3), sticky="w")
         
         ctk.CTkLabel(
             header,
             text=f"[{icon}]",
-            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             text_color=glow
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 6))
         
         ctk.CTkLabel(
             header,
             text=title.upper(),
-            font=ctk.CTkFont(family="Consolas", size=14),
+            font=ctk.CTkFont(family="Consolas", size=11),
             text_color=TEXT_DIM
         ).pack(side="left")
         
         self.value_label = ctk.CTkLabel(
             self,
             text=value,
-            font=ctk.CTkFont(family="Consolas", size=28, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
             text_color=glow
         )
-        self.value_label.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
+        self.value_label.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="w")
     
     def update_value(self, value: str):
         self.value_label.configure(text=value)
@@ -117,29 +118,29 @@ class ProgressCard(NeonFrame):
         ctk.CTkLabel(
             self,
             text=f"// {title}",
-            font=ctk.CTkFont(family="Consolas", size=14),
+            font=ctk.CTkFont(family="Consolas", size=11),
             text_color=TEXT_DIM
-        ).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ).grid(row=0, column=0, padx=10, pady=(10, 3), sticky="w")
         
         self.progress = ctk.CTkProgressBar(
             self,
-            height=10,
+            height=8,
             corner_radius=2,
             progress_color=glow,
             fg_color=BG_DARKER,
             border_width=1,
             border_color=glow
         )
-        self.progress.grid(row=1, column=0, padx=15, pady=5, sticky="ew")
+        self.progress.grid(row=1, column=0, padx=10, pady=3, sticky="ew")
         self.progress.set(value / 100)
         
         self.value_label = ctk.CTkLabel(
             self,
             text=f"{value:.1f}%",
-            font=ctk.CTkFont(family="Consolas", size=24, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
             text_color=glow
         )
-        self.value_label.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="w")
+        self.value_label.grid(row=2, column=0, padx=10, pady=(3, 10), sticky="w")
     
     def update_value(self, value: float, color: str = None):
         self.progress.set(value / 100)
@@ -163,26 +164,26 @@ class HackerToolButton(NeonFrame):
         self.icon_label = ctk.CTkLabel(
             self,
             text=f"[{icon}]",
-            font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=16, weight="bold"),
             text_color=glow
         )
-        self.icon_label.grid(row=0, column=0, rowspan=2, padx=15, pady=15)
+        self.icon_label.grid(row=0, column=0, rowspan=2, padx=10, pady=10)
         
         self.title_label = ctk.CTkLabel(
             self,
             text=f"> {title}",
-            font=ctk.CTkFont(family="Consolas", size=15, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=glow
         )
-        self.title_label.grid(row=0, column=1, padx=(0, 15), pady=(15, 0), sticky="sw")
+        self.title_label.grid(row=0, column=1, padx=(0, 10), pady=(10, 0), sticky="sw")
         
         self.desc_label = ctk.CTkLabel(
             self,
             text=f"  {desc}",
-            font=ctk.CTkFont(family="Consolas", size=13),
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=TEXT_DIM
         )
-        self.desc_label.grid(row=1, column=1, padx=(0, 12), pady=(0, 12), sticky="nw")
+        self.desc_label.grid(row=1, column=1, padx=(0, 8), pady=(0, 8), sticky="nw")
         
         self.icon_label.bind("<Button-1>", self._on_click)
         self.title_label.bind("<Button-1>", self._on_click)
@@ -200,7 +201,7 @@ class OptimizerApp(ctk.CTk):
         
         self.title("◢ YALOKGAR // SYSTEM OPTIMIZER ◣")
         self.geometry("1280x850")
-        self.minsize(1100, 750)
+        self.minsize(800, 500)
         
         self.configure(fg_color=BG_DARK)
         
@@ -210,68 +211,68 @@ class OptimizerApp(ctk.CTk):
         
         self.optimizer = SystemOptimizer(log_callback=self._log)
         self.process_optimizer = ProcessOptimizer(log_callback=self._log)
+        self.updater = Updater(log_callback=self._log)
         
         self._is_running = False
         self._update_system_info()
         self._start_monitoring()
     
     def _setup_grid(self):
+        self.grid_columnconfigure(0, weight=0, minsize=280)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0)
     
     def _create_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, fg_color=BG_PANEL, width=340, corner_radius=0)
+        self.sidebar = ctk.CTkScrollableFrame(
+            self, 
+            fg_color=BG_PANEL, 
+            width=280, 
+            corner_radius=0,
+            scrollbar_button_color=NEON_GREEN,
+            scrollbar_button_hover_color=NEON_CYAN
+        )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar.grid_propagate(False)
-        self.sidebar.grid_rowconfigure(12, weight=1)
+        self.sidebar.grid_columnconfigure(0, weight=1)
         
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        logo_frame.grid(row=0, column=0, padx=20, pady=(25, 5), sticky="ew")
-        
-        ascii_logo = """
- ██╗   ██╗ █████╗ ██╗      ██████╗ ██╗  ██╗ ██████╗  █████╗ ██████╗ 
- ╚██╗ ██╔╝██╔══██╗██║     ██╔═══██╗██║ ██╔╝██╔════╝ ██╔══██╗██╔══██╗
-  ╚████╔╝ ███████║██║     ██║   ██║█████╔╝ ██║  ███╗███████║██████╔╝
-   ╚██╔╝  ██╔══██║██║     ██║   ██║██╔═██╗ ██║   ██║██╔══██║██╔══██╗
-    ██║   ██║  ██║███████╗╚██████╔╝██║  ██╗╚██████╔╝██║  ██║██║  ██║
-    ╚═╝   ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"""
+        logo_frame.pack(fill="x", padx=15, pady=(20, 5))
         
         GlitchLabel(
             logo_frame,
             text="◢◤ YALOKGAR ◥◣",
-            font=ctk.CTkFont(family="Consolas", size=28, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=22, weight="bold"),
             text_color=NEON_GREEN,
             glitch=True
         ).pack(anchor="center")
         
         ctk.CTkLabel(
             logo_frame,
-            text="[ SYSTEM OPTIMIZER v2.0 ]",
-            font=ctk.CTkFont(family="Consolas", size=13),
+            text=f"[ SYSTEM OPTIMIZER v{get_version()} ]",
+            font=ctk.CTkFont(family="Consolas", size=11),
             text_color=TEXT_DIM
         ).pack(anchor="center", pady=(2, 0))
         
         ctk.CTkLabel(
             logo_frame,
-            text="━" * 28,
-            font=ctk.CTkFont(family="Consolas", size=12),
+            text="━" * 24,
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=NEON_GREEN
-        ).pack(anchor="center", pady=(10, 0))
+        ).pack(anchor="center", pady=(8, 0))
         
         self.full_opt_btn = CyberButton(
             self.sidebar,
             text="◆ ПОЛНАЯ ОПТИМИЗАЦИЯ ◆",
             neon_color=NEON_CYAN,
-            height=55,
+            height=45,
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             command=self._run_full_optimization
         )
-        self.full_opt_btn.grid(row=2, column=0, padx=20, pady=(20, 10), sticky="ew")
+        self.full_opt_btn.pack(fill="x", padx=15, pady=(15, 8))
         
         buttons_config = [
             ("⌂ Быстрая очистка", self._run_quick_clean, NEON_GREEN),
             ("◈ Оптимизация RAM", self._run_ram_optimization, NEON_GREEN),
-            ("▣ Игровой режим", self._run_game_mode, NEON_PURPLE),
+            ("▣ Игровой режим", self._run_game_mode, NEON_PURPLE),  
             ("◎ Оптимизация сети", self._run_network_optimization, NEON_CYAN),
             ("⚡ Высокая мощность", self._run_power_optimization, NEON_YELLOW),
         ]
@@ -281,66 +282,114 @@ class OptimizerApp(ctk.CTk):
                 self.sidebar,
                 text=text,
                 neon_color=color,
-                height=45,
+                height=38,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 command=cmd
             )
-            btn.grid(row=3+i, column=0, padx=20, pady=5, sticky="ew")
+            btn.pack(fill="x", padx=15, pady=4)
             setattr(self, f'btn_{i}', btn)
         
+        ctk.CTkLabel(
+            self.sidebar,
+            text="━" * 24,
+            font=ctk.CTkFont(family="Consolas", size=10),
+            text_color=TEXT_DIM
+        ).pack(pady=(10, 5))
+        
+        self.benchmark_btn = CyberButton(
+            self.sidebar,
+            text="📊 БЕНЧМАРК",
+            neon_color=NEON_CYAN,
+            height=35,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=self._run_benchmark
+        )
+        self.benchmark_btn.pack(fill="x", padx=15, pady=3)
+        
+        self.rollback_btn = CyberButton(
+            self.sidebar,
+            text="↩ ОТКАТ ИЗМЕНЕНИЙ",
+            neon_color=NEON_RED,
+            height=35,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=self._run_rollback
+        )
+        self.rollback_btn.pack(fill="x", padx=15, pady=3)
+        
+        self.open_logs_btn = CyberButton(
+            self.sidebar,
+            text="📄 ОТКРЫТЬ ЛОГИ",
+            neon_color=NEON_ORANGE,
+            height=35,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=self._open_logs
+        )
+        self.open_logs_btn.pack(fill="x", padx=15, pady=3)
+        
+        self.update_btn = CyberButton(
+            self.sidebar,
+            text="🔄 ПРОВЕРИТЬ ОБНОВЛЕНИЯ",
+            neon_color=NEON_GREEN,
+            height=35,
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=self._check_updates
+        )
+        self.update_btn.pack(fill="x", padx=15, pady=3)
+        
         stats_frame = NeonFrame(self.sidebar, glow_color=NEON_GREEN)
-        stats_frame.grid(row=13, column=0, padx=20, pady=15, sticky="sew")
+        stats_frame.pack(fill="x", padx=15, pady=(15, 10))
         
         ctk.CTkLabel(
             stats_frame,
             text="// SYSTEM STATUS",
-            font=ctk.CTkFont(family="Consolas", size=13),
+            font=ctk.CTkFont(family="Consolas", size=11),
             text_color=TEXT_DIM
-        ).pack(padx=15, pady=(12, 5), anchor="w")
+        ).pack(padx=12, pady=(10, 4), anchor="w")
         
         self.status_label = ctk.CTkLabel(
             stats_frame,
             text="[■■■■■■■■■■] READY",
-            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=NEON_GREEN
         )
-        self.status_label.pack(padx=15, pady=(0, 12), anchor="w")
+        self.status_label.pack(padx=12, pady=(0, 10), anchor="w")
         
         author_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        author_frame.grid(row=14, column=0, padx=20, pady=(5, 15), sticky="sew")
+        author_frame.pack(fill="x", padx=15, pady=(5, 15))
         
         ctk.CTkLabel(
             author_frame,
-            text="━" * 28,
-            font=ctk.CTkFont(family="Consolas", size=12),
+            text="━" * 24,
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=TEXT_DIM
         ).pack()
         
         ctk.CTkLabel(
             author_frame,
             text="coded by YALOKGAR",
-            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
             text_color=NEON_PINK
         ).pack(pady=(5, 0))
         
         ctk.CTkLabel(
             author_frame,
-            text="github.com/yalokgar",
-            font=ctk.CTkFont(family="Consolas", size=11),
+            text="github.com/YALOKGARua",
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=TEXT_DIM
         ).pack()
     
     def _create_main_area(self):
         self.main_area = ctk.CTkScrollableFrame(self, fg_color="transparent", scrollbar_button_color=NEON_GREEN, scrollbar_button_hover_color=NEON_CYAN)
-        self.main_area.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
-        self.main_area.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        self.main_area.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.main_area.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="cards")
         
         header_frame = ctk.CTkFrame(self.main_area, fg_color="transparent")
-        header_frame.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 15))
+        header_frame.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 10))
         
         GlitchLabel(
             header_frame,
             text="◢ CONTROL PANEL ◣",
-            font=ctk.CTkFont(family="Consolas", size=32, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=24, weight="bold"),
             text_color=NEON_GREEN,
             glitch=True
         ).pack(side="left")
@@ -348,57 +397,61 @@ class OptimizerApp(ctk.CTk):
         self.time_label = ctk.CTkLabel(
             header_frame,
             text=f"[SESSION: {datetime.now().strftime('%H:%M')}]",
-            font=ctk.CTkFont(family="Consolas", size=15),
+            font=ctk.CTkFont(family="Consolas", size=12),
             text_color=TEXT_DIM
         )
         self.time_label.pack(side="right")
         
         self.cpu_card = SystemCard(self.main_area, "PROCESSOR", "—", "CPU", NEON_CYAN)
-        self.cpu_card.grid(row=1, column=0, padx=4, pady=4, sticky="nsew")
+        self.cpu_card.grid(row=1, column=0, padx=3, pady=3, sticky="nsew")
         
         self.ram_card = SystemCard(self.main_area, "MEMORY", "—", "RAM", NEON_PURPLE)
-        self.ram_card.grid(row=1, column=1, padx=4, pady=4, sticky="nsew")
+        self.ram_card.grid(row=1, column=1, padx=3, pady=3, sticky="nsew")
         
         self.disk_card = SystemCard(self.main_area, "STORAGE", "—", "HDD", NEON_PINK)
-        self.disk_card.grid(row=1, column=2, padx=4, pady=4, sticky="nsew")
+        self.disk_card.grid(row=1, column=2, padx=3, pady=3, sticky="nsew")
         
         self.gpu_card = SystemCard(self.main_area, "GRAPHICS", "—", "GPU", NEON_GREEN)
-        self.gpu_card.grid(row=1, column=3, padx=4, pady=4, sticky="nsew")
+        self.gpu_card.grid(row=1, column=3, padx=3, pady=3, sticky="nsew")
         
         progress_frame = ctk.CTkFrame(self.main_area, fg_color="transparent")
-        progress_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=8)
-        progress_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        progress_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=6)
+        progress_frame.grid_columnconfigure((0, 1, 2), weight=1, uniform="progress")
         
         self.cpu_progress = ProgressCard(progress_frame, "CPU_LOAD", 0, NEON_CYAN)
-        self.cpu_progress.grid(row=0, column=0, padx=4, pady=4, sticky="nsew")
+        self.cpu_progress.grid(row=0, column=0, padx=3, pady=3, sticky="nsew")
         
         self.ram_progress = ProgressCard(progress_frame, "RAM_USAGE", 0, NEON_PURPLE)
-        self.ram_progress.grid(row=0, column=1, padx=4, pady=4, sticky="nsew")
+        self.ram_progress.grid(row=0, column=1, padx=3, pady=3, sticky="nsew")
         
         self.disk_progress = ProgressCard(progress_frame, "DISK_FILL", 0, NEON_PINK)
-        self.disk_progress.grid(row=0, column=2, padx=4, pady=4, sticky="nsew")
+        self.disk_progress.grid(row=0, column=2, padx=3, pady=3, sticky="nsew")
         
         ctk.CTkLabel(
             self.main_area,
             text="◢ OPTIMIZATION TOOLS ◣",
-            font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=16, weight="bold"),
             text_color=NEON_GREEN
-        ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(20, 12))
+        ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(15, 8))
         
         tools_frame = ctk.CTkFrame(self.main_area, fg_color="transparent")
         tools_frame.grid(row=4, column=0, columnspan=4, sticky="ew")
-        tools_frame.grid_columnconfigure((0, 1), weight=1)
+        tools_frame.grid_columnconfigure((0, 1), weight=1, uniform="tools")
         
         tools = [
             ("ULTIMATE_OPT", "Max FPS + Min Input Lag", "★", self._run_ultimate_optimization, NEON_CYAN),
             ("INPUT_LAG_FIX", "Game priority + Responsiveness", "◈", self._run_input_lag, NEON_PURPLE),
+            ("GPU_VRAM", "Очистка видеопамяти", "◇", self._run_gpu_vram_clean, NEON_CYAN),
+            ("TASK_SCHED", "Отключить задачи Windows", "▦", self._run_disable_tasks, NEON_PURPLE),
+            ("CPU_AFFINITY", "Оптимизация ядер CPU", "◉", self._run_cpu_affinity, NEON_GREEN),
+            ("PREFETCH", "Отключить Prefetch/SysMain", "◐", self._run_disable_prefetch, NEON_YELLOW),
+            ("SSD_TRIM", "Оптимизация SSD (TRIM)", "▣", self._run_trim, NEON_PINK),
             ("MOUSE_RAW", "Disable acceleration", "◎", self._run_mouse_optimization, NEON_GREEN),
             ("FULLSCREEN_FIX", "Disable FSO + Game DVR", "◆", self._run_fullscreen_fix, NEON_YELLOW),
-            ("DISABLE_HPET", "Lower timer latency", "▣", self._run_disable_hpet, NEON_PINK),
+            ("DISABLE_HPET", "Lower timer latency", "▢", self._run_disable_hpet, NEON_PINK),
             ("GPU_SCHEDULE", "Hardware GPU Scheduling", "⟳", self._run_gpu_scheduling, NEON_CYAN),
-            ("CORE_UNPARK", "100% CPU cores active", "◉", self._run_core_unpark, NEON_GREEN),
+            ("CORE_UNPARK", "100% CPU cores active", "●", self._run_core_unpark, NEON_GREEN),
             ("KILL_BG_APPS", "Disable background apps", "✕", self._run_disable_bg_apps, NEON_RED),
-            ("BROWSER_CACHE", "Clean browser cache", "◐", self._run_browser_cache_clean, NEON_PURPLE),
             ("KILL_SERVICES", "Disable telemetry", "⚡", self._run_services_optimization, NEON_YELLOW),
         ]
         
@@ -407,28 +460,24 @@ class OptimizerApp(ctk.CTk):
             col = i % 2
             HackerToolButton(
                 tools_frame, title, desc, icon, cmd, glow=color
-            ).grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+            ).grid(row=row, column=col, padx=3, pady=3, sticky="ew")
         
         self._create_terminal()
     
     def _create_terminal(self):
-        terminal_container = ctk.CTkFrame(self, fg_color="transparent")
-        terminal_container.grid(row=1, column=1, sticky="nsew", padx=15, pady=(0, 10))
-        terminal_container.grid_columnconfigure(0, weight=1)
-        
         ctk.CTkLabel(
-            terminal_container,
+            self.main_area,
             text="◢ TERMINAL OUTPUT ◣",
-            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=16, weight="bold"),
             text_color=NEON_GREEN
-        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(15, 8))
         
-        log_frame = NeonFrame(terminal_container, glow_color=NEON_GREEN)
-        log_frame.grid(row=1, column=0, sticky="nsew")
+        log_frame = NeonFrame(self.main_area, glow_color=NEON_GREEN)
+        log_frame.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(0, 10))
         log_frame.grid_columnconfigure(0, weight=1)
         
-        self.log_text = TerminalText(log_frame, height=140, wrap="word")
-        self.log_text.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
+        self.log_text = TerminalText(log_frame, height=120, wrap="word")
+        self.log_text.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         self._log("╔═══════════════════════════════════════════════╗")
         self._log("║  YALOKGAR SYSTEM OPTIMIZER v2.0               ║")
@@ -627,6 +676,138 @@ class OptimizerApp(ctk.CTk):
     def _run_disable_bg_apps(self):
         self._log("> Executing BACKGROUND_APPS kill...")
         self._run_in_thread(lambda: self.optimizer.disable_background_apps())
+    
+    def _run_gpu_vram_clean(self):
+        self._log("> Executing GPU_VRAM cleanup...")
+        self._run_in_thread(lambda: self.optimizer.clear_gpu_vram())
+    
+    def _run_disable_tasks(self):
+        self._log("> Executing TASK_SCHEDULER optimization...")
+        self._run_in_thread(lambda: self.optimizer.disable_scheduled_tasks())
+    
+    def _run_cpu_affinity(self):
+        self._log("> Executing CPU_AFFINITY optimization...")
+        self._run_in_thread(lambda: self.optimizer.set_cpu_affinity())
+    
+    def _run_disable_prefetch(self):
+        self._log("> Executing PREFETCH/SUPERFETCH disable...")
+        self._run_in_thread(lambda: self.optimizer.optimize_prefetch(enable=False))
+    
+    def _run_trim(self):
+        self._log("> Executing SSD TRIM optimization...")
+        self._run_in_thread(lambda: self.optimizer.run_trim())
+    
+    def _run_benchmark(self):
+        self._log("> Executing BENCHMARK...")
+        self._run_in_thread(lambda: self.optimizer.run_benchmark_comparison())
+    
+    def _run_rollback(self):
+        result = messagebox.askyesno(
+            "⚠ ОТКАТ ИЗМЕНЕНИЙ",
+            "Это действие отменит ВСЕ оптимизации:\n\n"
+            "• Восстановит службы Windows\n"
+            "• Включит Prefetch/Superfetch\n"
+            "• Восстановит план питания\n"
+            "• Восстановит визуальные эффекты\n"
+            "• Включит задачи планировщика\n"
+            "• Включит фоновые приложения\n\n"
+            "⚠️ ПОТРЕБУЕТСЯ ПЕРЕЗАГРУЗКА!\n\n"
+            "Продолжить?"
+        )
+        if result:
+            self._log("> Executing ROLLBACK...")
+            self._run_in_thread(lambda: self.optimizer.rollback_all())
+    
+    def _open_logs(self):
+        log_path = self.optimizer.get_log_file_path()
+        if log_path and os.path.exists(log_path):
+            self._log(f"> Opening logs: {log_path}")
+            os.startfile(os.path.dirname(log_path))
+        else:
+            log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+            if os.path.exists(log_dir):
+                os.startfile(log_dir)
+            else:
+                self._log("> Logs folder not found")
+    
+    def _check_updates(self):
+        self._log("> Checking for updates...")
+        
+        def check_task():
+            result = self.updater.check_for_updates()
+            
+            if result.get("error"):
+                self.after(0, lambda: messagebox.showerror(
+                    "Ошибка",
+                    f"Не удалось проверить обновления:\n{result['error']}"
+                ))
+                return
+            
+            if result.get("update_available"):
+                self.after(0, lambda: self._prompt_update(result))
+            else:
+                self.after(0, lambda: messagebox.showinfo(
+                    "Обновления",
+                    f"У вас последняя версия: v{result['current_version']}"
+                ))
+        
+        self._run_in_thread(check_task, self.update_btn)
+    
+    def _prompt_update(self, result):
+        answer = messagebox.askyesno(
+            "Доступно обновление",
+            f"Доступна новая версия!\n\n"
+            f"Текущая: v{result['current_version']}\n"
+            f"Новая: v{result['latest_version']}\n\n"
+            f"Скачать и установить?"
+        )
+        
+        if answer:
+            self._download_and_install_update()
+    
+    def _download_and_install_update(self):
+        self._log("> Downloading update...")
+        
+        def update_task():
+            def progress_callback(percent):
+                self.after(0, lambda p=percent: self.status_label.configure(
+                    text=f"[{'▓' * (p//10)}{'░' * (10-p//10)}] {p}%",
+                    text_color=NEON_CYAN
+                ))
+            
+            zip_path = self.updater.download_update(progress_callback)
+            
+            if zip_path:
+                success = self.updater.apply_update(zip_path)
+                if success:
+                    self.after(0, lambda: self._show_restart_dialog())
+                else:
+                    self.after(0, lambda: messagebox.showerror(
+                        "Ошибка",
+                        "Не удалось установить обновление"
+                    ))
+            else:
+                self.after(0, lambda: messagebox.showerror(
+                    "Ошибка",
+                    "Не удалось загрузить обновление"
+                ))
+        
+        self._run_in_thread(update_task, self.update_btn)
+    
+    def _show_restart_dialog(self):
+        answer = messagebox.askyesno(
+            "Обновление установлено",
+            "Обновление успешно установлено!\n\n"
+            "Перезапустить приложение сейчас?"
+        )
+        
+        if answer:
+            self._restart_app()
+    
+    def _restart_app(self):
+        self._log("> Restarting application...")
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
 
 
 if __name__ == "__main__":
