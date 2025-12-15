@@ -1,0 +1,25 @@
+Yalokgar Optimizer v2.4.0
+========================
+Дата: 2025-12-15 21:52
+
+Что нового:
+-----------
+• [Добавь описание изменений]
+
+Файлы релиза:
+-------------
+• Yalokgar_Optimizer_v2.4.0.exe - Готовая программа
+• Yalokgar_Optimizer_v2.4.0_source.zip - Исходный код
+
+Установка EXE:
+--------------
+1. Скачай Yalokgar_Optimizer_v2.4.0.exe
+2. Запусти от имени администратора
+
+Установка из исходников:
+------------------------
+1. Распакуй source.zip
+2. pip install -r requirements.txt
+3. python main.py
+
+GitHub: https://github.com/YALOKGARua/PC-optimization

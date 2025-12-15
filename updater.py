@@ -9,7 +9,7 @@ import urllib.request
 import urllib.error
 from typing import Callable, Optional
 
-VERSION = "2.2.0"
+VERSION = "2.4.0"
 GITHUB_USER = "YALOKGARua"
 GITHUB_REPO = "PC-optimization"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
@@ -191,46 +191,84 @@ class Updater:
             current_exe = sys.executable
             app_dir = os.path.dirname(current_exe)
             exe_name = os.path.basename(current_exe)
+            current_pid = str(os.getpid())
             
             old_exe_backup = os.path.join(app_dir, exe_name + ".old")
-            updater_bat = os.path.join(tempfile.gettempdir(), "yalokgar_update.bat")
+            updater_bat = os.path.join(app_dir, "_update.bat")
             
+            temp_folder = os.environ.get('TEMP', os.environ.get('TMP', ''))
             bat_content = f'''@echo off
-title Yalokgar Optimizer - Updating...
-echo Обновление Yalokgar Optimizer...
-echo Ожидание закрытия приложения...
+chcp 65001 >nul
+title Yalokgar Optimizer Update
+echo.
+echo ========================================
+echo   YALOKGAR OPTIMIZER - UPDATE
+echo ========================================
+echo.
+echo Waiting for application to close...
 timeout /t 2 /nobreak >nul
 
 :waitloop
-tasklist /FI "PID eq %CURRENT_PID%" 2>nul | find /I "%CURRENT_PID%" >nul
+tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if not errorlevel 1 (
+    echo Still waiting...
     timeout /t 1 /nobreak >nul
     goto waitloop
 )
 
-echo Установка обновления...
-if exist "{old_exe_backup}" del /f /q "{old_exe_backup}"
-move /y "{current_exe}" "{old_exe_backup}"
-move /y "{new_exe_path}" "{current_exe}"
+echo Cleaning up temp files...
+timeout /t 3 /nobreak >nul
+for /d %%i in ("{temp_folder}\\_MEI*") do rd /s /q "%%i" 2>nul
 
-echo Запуск обновлённой версии...
+echo.
+echo Installing update...
+
+if exist "{old_exe_backup}" (
+    del /f /q "{old_exe_backup}" 2>nul
+)
+
+if exist "{current_exe}" (
+    move /y "{current_exe}" "{old_exe_backup}" >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Cannot move old exe
+        timeout /t 5
+        exit /b 1
+    )
+)
+
+copy /y "{new_exe_path}" "{current_exe}" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Cannot copy new exe
+    if exist "{old_exe_backup}" (
+        move /y "{old_exe_backup}" "{current_exe}" >nul 2>&1
+    )
+    timeout /t 5
+    exit /b 1
+)
+
+echo.
+echo Update installed successfully!
+echo Starting updated version...
+timeout /t 2 /nobreak >nul
+
 start "" "{current_exe}"
 
-if exist "{old_exe_backup}" del /f /q "{old_exe_backup}"
-del /f /q "%~f0"
+timeout /t 3 /nobreak >nul
+if exist "{old_exe_backup}" del /f /q "{old_exe_backup}" 2>nul
+if exist "{new_exe_path}" del /f /q "{new_exe_path}" 2>nul
+del /f /q "%~f0" 2>nul
 '''
-            bat_content = bat_content.replace("%CURRENT_PID%", str(os.getpid()))
             
-            with open(updater_bat, 'w', encoding='cp866') as f:
+            with open(updater_bat, 'w', encoding='utf-8') as f:
                 f.write(bat_content)
             
             self._log("  Запуск установщика обновления...")
             self._log("  ⚠️ Приложение будет перезапущено")
             
             subprocess.Popen(
-                ['cmd', '/c', updater_bat],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                close_fds=True
+                ['cmd', '/c', 'start', '', '/min', updater_bat],
+                shell=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             return True
